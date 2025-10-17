@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ephemeral Chat</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #chat { list-style: none; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; margin-bottom: 10px; }
+        #chat li { padding: 5px; border-bottom: 1px solid #eee; }
+        input { margin: 5px 0; padding: 5px; }
+        button { padding: 5px 10px; }
+        #activeRooms { margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<h2>Welcome to Ephemeral Chat</h2>
+
+<div id="generateDiv">
+    <button onclick="generateLink()">Generate Chat Link</button>
+    <p id="link"></p>
+</div>
+
+<div id="chatDiv" style="display:none;">
+    <input id="sender" placeholder="Your name"><br>
+    <input id="msg" placeholder="Type message">
+    <button onclick="sendMessage()">Send</button>
+    <ul id="chat"></ul>
+</div>
+
+<!-- Active rooms -->
+<div id="activeRooms">
+    <h3>Active Rooms (<span id="activeRoomCount">0</span>)</h3>
+    <ul id="roomList"></ul>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+<script>
+    const pathParts = window.location.pathname.split('/');
+    const roomId = pathParts[pathParts.length - 1];
+    let stompClient;
+
+    // Show chat interface if on a room URL
+    if(roomId && roomId !== 'index.html' && roomId !== '') {
+        document.getElementById('generateDiv').style.display = 'none';
+        document.getElementById('chatDiv').style.display = 'block';
+        initChat(roomId);
+    } else {
+        initRoomList(); // show active rooms on homepage
+    }
+
+    // Function to generate unique chat link
+    function generateLink() {
+        const newRoomId = crypto.randomUUID();
+        const url = window.location.origin + "/chatroom/" + newRoomId;
+        document.getElementById("link").innerHTML = `<a href="${url}" target="_blank">${url}</a>`;
+    }
+
+    // Initialize chat for a specific room
+    function initChat(room) {
+        const socket = new SockJS('http://localhost:8080/chat');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({roomId: room}, function(frame) {
+            console.log('Connected: ' + frame);
+
+            // Subscribe to messages in this room
+            stompClient.subscribe(`/topic/messages/${room}`, function(message) {
+                const msgObj = JSON.parse(message.body);
+                const li = document.createElement("li");
+                li.textContent = msgObj.sender + ": " + msgObj.content;
+                document.getElementById("chat").appendChild(li);
+                document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
+            });
+
+            // Subscribe to active rooms updates
+            stompClient.subscribe(`/topic/rooms`, function(message) {
+                const rooms = JSON.parse(message.body);
+                document.getElementById("activeRoomCount").innerText = rooms.length;
+                updateRoomList(rooms);
+            });
+        });
+    }
+
+    // Initialize only the active rooms list on homepage
+    function initRoomList() {
+        const socket = new SockJS('http://localhost:8080/chat');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function(frame) {
+            console.log('Connected to receive active rooms');
+
+            stompClient.subscribe(`/topic/rooms`, function(message) {
+                const rooms = JSON.parse(message.body);
+                document.getElementById("activeRoomCount").innerText = rooms.length;
+                updateRoomList(rooms);
+            });
+        });
+    }
+
+    // Update active rooms list in HTML
+    function updateRoomList(rooms) {
+        const list = document.getElementById("roomList");
+        list.innerHTML = '';
+        rooms.forEach(r => {
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="/chatroom/${r}">${r}</a>`;
+            list.appendChild(li);
+        });
+    }
+
+    // Send message from chat input
+    window.sendMessage = function() {
+        const sender = document.getElementById("sender").value;
+        const content = document.getElementById("msg").value;
+        if(sender && content && stompClient) {
+            stompClient.send(`/app/send/${roomId}`, {}, JSON.stringify({sender, content}));
+            document.getElementById("msg").value = "";
+        }
+    };
+</script>
+
+</body>
+</html>
