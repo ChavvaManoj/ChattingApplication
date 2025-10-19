@@ -1,17 +1,15 @@
-# Use official OpenJDK 17 image as base
+# Use an official OpenJDK image
 FROM openjdk:17-jdk-slim
 
-# Set working directory
+# Set working directory inside the container
 WORKDIR /app
 
-# Copy everything from your local project to the container
-COPY . .
+# Copy the built jar file into the container
+COPY target/ChattingApp-0.0.1-SNAPSHOT.jar app.jar
 
-# Build the Spring Boot app (using Maven wrapper if it exists)
-RUN ./mvnw clean package -DskipTests || mvn clean package -DskipTests
 
-# Expose port 8080
+# Expose the port your Spring Boot app runs on
 EXPOSE 8080
 
-# Run the generated jar file
-CMD ["java", "-jar", "target/ChattingApp-0.0.1-SNAPSHOT.jar"]
+# Run the jar file
+ENTRYPOINT ["java", "-jar", "app.jar"]
